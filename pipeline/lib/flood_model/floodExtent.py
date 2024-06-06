@@ -101,23 +101,31 @@ class FloodExtent:
             
 
         
-    def reproject_file(self, gdf, file_name, force_epsg):
+    def reproject_file(self, gdf: DataFrame, file_name: str, force_epsg: int):
+        """
+        Function to reproject GeoDataFrame to a specified EPSG code.
+        """
 
         logger.info("Reprojecting %s to EPSG %i...\n" % (file_name, force_epsg), end="", flush=True)
         gdf = gdf.to_crs(epsg=force_epsg)
 
         return gdf
-
-    def loadGlofasData(self):
-
-        df_district_mapping=pd.DataFrame(self.district_mapping)
         
-        #Load (static) threshold values per station
-        path = PIPELINE_DATA+'output/triggers_rp_per_station/triggers_rp_' + self.leadTimeLabel + '_' + self.countryCodeISO3 + '.json'
-        df_triggers = pd.read_json(path, orient='records')
+    def loadGlofasData(self) -> pd.DataFrame:
+        """
+        Function to load Glofas data and merge it with district mapping and triggers data.
         
-        #Merge two datasets
-        df_glofas = pd.merge(df_district_mapping, df_triggers, left_on='glofasStation', right_on='stationCode', how='left')
+        Returns:
+        - df_glofas (pd.DataFrame): Merged dataset containing Glofas data, district mapping, and triggers data.
+        """
+        df_district_mapping: pd.DataFrame = pd.DataFrame(self.district_mapping)
+        
+        # Load (static) threshold values per station
+        path: str = PIPELINE_DATA + 'output/triggers_rp_per_station/triggers_rp_' + self.leadTimeLabel + '_' + self.countryCodeISO3 + '.json'
+        df_triggers: pd.DataFrame = pd.read_json(path, orient='records')
+        
+        # Merge two datasets
+        df_glofas: pd.DataFrame = pd.merge(df_district_mapping, df_triggers, left_on='glofasStation', right_on='stationCode', how='left')
 
         return df_glofas
 
@@ -139,6 +147,9 @@ class FloodExtent:
         return outImage, outMeta
 
     def mergeRasters(self):
+        """
+        function to merge all clipped flood extents back together and save.
+        """
         src_files_to_mosaic = []
         for fp in os.listdir(self.outputPathAreas):
             if len(src_files_to_mosaic) == 0:
