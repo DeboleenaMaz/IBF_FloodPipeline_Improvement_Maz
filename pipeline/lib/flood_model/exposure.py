@@ -6,7 +6,6 @@ from rasterio.features import shapes
 import fiona
 import numpy as np
 import pandas as pd
-from pandas import DataFrame
 import json
 from flood_model.settings import *
 import os
@@ -209,11 +208,18 @@ class Exposure:
                         json.dump(result, fp)
 
 
-    def get_alert_threshold(self, population_affected):
-        # population_total = next((x for x in self.population_total if x['placeCode'] == population_affected['placeCode']), None)
+    def get_alert_threshold(self, population_affected: dict) -> dict:
+        """
+        Calculates the alert threshold based on the population affected.
+
+        Args:
+            population_affected (dict): Dictionary containing the population affected information.
+
+        Returns:
+            dict: Dictionary containing the alert threshold amount and place code.
+        """
         alert_threshold = 0
-        if (population_affected['amount'] > 0):
-            # alert_threshold = 1
+        if population_affected['amount'] > 0:
             with open(self.triggersPerStationPath) as fp:
                 triggersPerStation = json.load(fp)
             alert_threshold = self.classifyAlertThreshold(triggersPerStation)
@@ -224,13 +230,21 @@ class Exposure:
             'placeCode': population_affected['placeCode']
         }
         
-    def get_population_affected_percentage(self, population_affected,adm_level):
-        ##get population for admin level
+    def get_population_affected_percentage(self, population_affected: dict, adm_level: int) -> dict:
+        """
+        Calculates the percentage of population affected based on the population total at the specified administrative level.
+
+        Args:
+            population_affected (dict): Dictionary containing the population affected information.
+            adm_level (int): Administrative level.
+
+        Returns:
+            dict: Dictionary containing the percentage of population affected and place code.
+        """
         try:
-            #df_stats = self.db.apiGetRequest('admin-area-data/{}/{}/{}'.format(self.countryCodeISO3, adm_level, 'populationTotal'),countryCodeISO3='')
-            self.POPULATION_PATH= os.path.join(self.PIPELINE_INPUT_COD,f"{self.countryCodeISO3}_{adm_level}_population.json") 
+            self.POPULATION_PATH = os.path.join(self.PIPELINE_INPUT_COD, f"{self.countryCodeISO3}_{adm_level}_population.json")
             with open(self.POPULATION_PATH) as fp:
-                df_stats=json.load(fp)
+                df_stats = json.load(fp)
         except Exception as e:
             logger.info('file not found')
             '''
@@ -247,7 +261,7 @@ class Exposure:
                 df_stats = self.db.apiGetRequest(
                     'admin-area-data/{}/{}/{}'.format(self.countryCodeISO3, adm_level, 'populationTotal'),
                     countryCodeISO3='')
-            '''        
+            '''
         population_total = next((x for x in df_stats if x['placeCode'] == population_affected['placeCode']), None)
         population_affected_percentage = 0.0
         if population_total and population_total['value'] > 0:
@@ -257,21 +271,30 @@ class Exposure:
             'placeCode': population_total['placeCode']
         }
     
-    def calcAffected(self, disasterExtentRaster, indicator, rasterValue):
-        disasterExtentShapes = self.loadTiffAsShapes(disasterExtentRaster)
-        if disasterExtentShapes != []:
-            try:
-                affectedImage, affectedMeta = self.clipTiffWithShapes(
-                    self.inputRaster, disasterExtentShapes)
-                with rasterio.open(self.outputRaster, "w", **affectedMeta) as dest:
-                    dest.write(affectedImage)
-            except ValueError:
-                logger.info('Rasters do not overlap')
-        #self.ADMIN_AREA_GDF_ADM_LEL_=self.ADMIN_AREA_GDF_ADM_LEL.query(f'adminLevel == {adm_level}')
-        self.ADMIN_AREA_GDF.to_file(self.ADMIN_AREA_GDF_TMP_PATH)
-        #self.ADMIN_AREA_GDF.to_file(self.ADMIN_AREA_GDF_TMP_PATH,driver='GeoJSON')
-        stats = self.calcStatsPerAdmin(indicator, disasterExtentShapes, rasterValue)
-        return stats
+    def calcAffected(self, disasterExtentRaster: str, indicator: str, rasterValue: float) -> List[Dict[str, Any]]:
+            """
+            Calculates the affected statistics per administrative area based on the disaster extent raster.
+
+            Args:
+                disasterExtentRaster (str): Path to the disaster extent raster file.
+                indicator (str): Indicator for the affected statistics.
+                rasterValue (float): Raster value for the affected area.
+
+            Returns:
+                List[Dict[str, Any]]: List of dictionaries containing the calculated statistics per administrative area.
+            """
+            disasterExtentShapes = self.loadTiffAsShapes(disasterExtentRaster)
+            if disasterExtentShapes != []:
+                try:
+                    affectedImage, affectedMeta = self.clipTiffWithShapes(
+                        self.inputRaster, disasterExtentShapes)
+                    with rasterio.open(self.outputRaster, "w", **affectedMeta) as dest:
+                        dest.write(affectedImage)
+                except ValueError:
+                    logger.info('Rasters do not overlap')
+            self.ADMIN_AREA_GDF.to_file(self.ADMIN_AREA_GDF_TMP_PATH)
+            stats = self.calcStatsPerAdmin(indicator, disasterExtentShapes, rasterValue)
+            return stats
 
     def calcStatsPerAdmin(self, indicator, disasterExtentShapes, rasterValue):
         # Load trigger_data per station
@@ -316,7 +339,18 @@ class Exposure:
         os.remove(self.ADMIN_AREA_GDF_TMP_PATH)
         return stats
 
-    def checkIfTriggeredArea(self, df_triggers, df_district_mapping, pcode):
+    def checkIfTriggeredArea(self, df_triggers: pd.DataFrame, df_district_mapping: pd.DataFrame, pcode: str) -> int:
+        """
+        Checks if a specific area is a triggered area based on the provided data.
+
+        Parameters:
+        - df_triggers: DataFrame containing trigger data per station.
+        - df_district_mapping: DataFrame containing assigned station per district.
+        - pcode: Place code of the area to check.
+
+        Returns:
+        - int: The trigger value if the area is triggered, otherwise 0.
+        """
         df_station_code = df_district_mapping[df_district_mapping['placeCode'] == pcode]
         if df_station_code.empty:
             return 0
@@ -329,7 +363,19 @@ class Exposure:
         trigger = df_trigger['fc_trigger'][0]
         return trigger
 
-    def calculateRasterStats(self, indicator, district, outFileAffected, rasterValue):
+    def calculateRasterStats(self, indicator: str, district: str, outFileAffected: str, rasterValue: float) -> dict:
+        """
+        Calculates the raster statistics for a specific district.
+
+        Parameters:
+        - indicator: The indicator for which the raster statistics are calculated.
+        - district: The district for which the raster statistics are calculated.
+        - outFileAffected: The file path of the affected raster.
+        - rasterValue: The value used for raster calculations.
+
+        Returns:
+        - dict: The calculated raster statistics.
+        """
         raster = rasterio.open(outFileAffected)
         stats = []
 
@@ -342,9 +388,18 @@ class Exposure:
         })
         return stats[0]
 
-    def loadTiffAsShapes(self, tiffLocaction):
-        allgeom = []
-        with rasterio.open(tiffLocaction) as dataset:
+    def loadTiffAsShapes(self, tiffLocation: str) -> List[Dict[str, Any]]:
+        """
+        Loads a TIFF file as shapes and returns a list of geometries.
+
+        Parameters:
+        - tiffLocation: The file path of the TIFF file.
+
+        Returns:
+        - List[Dict[str, Any]]: A list of geometries in GeoJSON format.
+        """
+        allGeom = []
+        with rasterio.open(tiffLocation) as dataset:
             # Read the dataset's valid data mask as a ndarray.
             image = dataset.read(1).astype(np.float32)
             image[image >= 0] = 1
@@ -358,10 +413,9 @@ class Exposure:
                     # reference system to CRS84 (EPSG:4326).
                     geom = rasterio.warp.transform_geom(
                         dataset.crs, 'EPSG:4326', geom, precision=6)
-                    # Append everything to one geojson
-
-                    allgeom.append(geom)
-        return allgeom
+                    # Append everything to one GeoJSON
+                    allGeom.append(geom)
+        return allGeom
 
     def clipTiffWithShapes(self, tiffLocaction, shapes):
         with rasterio.open(tiffLocaction) as src:
